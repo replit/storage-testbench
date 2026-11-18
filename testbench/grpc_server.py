@@ -718,6 +718,8 @@ class StorageServicer(storage_pb2_grpc.StorageServicer):
         (blob, _,) = gcs.object.Object.init(
             request, metadata, composed_media, bucket, True, context
         )
+        # Real GCS gives a composite object a CRC32C but no MD5.
+        blob.metadata.checksums.ClearField("md5_hash")
         self.db.insert_object(
             request.destination.bucket,
             blob,
