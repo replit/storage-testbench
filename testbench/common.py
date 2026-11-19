@@ -1214,6 +1214,19 @@ def consume_expect_redirect_token(db, context, method, routing_token):
         db.dequeue_next_instruction(test_id, method)
 
 
+def reject_truncated_body(request):
+    """A body shorter than its Content-Length is a client that went away mid-upload. GCS does not
+    create an object from it, but gunicorn ends the input stream at the disconnect, so Flask would
+    hand the partial body over as if it were complete."""
+    if request.environ.get("HTTP_TRANSFER_ENCODING", "") == "chunked":
+        return
+    content_length = request.headers.get("content-length")
+    if content_length is None:
+        return
+    if len(request.get_data(cache=True)) != int(content_length):
+        testbench.error.invalid("content-length header", None)
+
+
 def handle_gzip_request(request):
     """
     Handle gzip compressed JSON payloads when Content-Encoding: gzip is present on metadata requests.

@@ -1008,6 +1008,11 @@ upload.register_error_handler(Exception, testbench.error.RestException.handler)
 
 
 @upload.before_request
+def reject_truncated_upload():
+    return testbench.common.reject_truncated_body(flask.request)
+
+
+@upload.before_request
 def handle_gzip_compressed_request():
     return testbench.common.handle_gzip_request(flask.request)
 
