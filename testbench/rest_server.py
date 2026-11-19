@@ -1008,6 +1008,11 @@ upload.register_error_handler(Exception, testbench.error.RestException.handler)
 
 
 @upload.before_request
+def reject_truncated_upload():
+    return testbench.common.reject_truncated_body(flask.request)
+
+
+@upload.before_request
 def handle_gzip_compressed_request():
     return testbench.common.handle_gzip_request(flask.request)
 
@@ -1285,6 +1290,24 @@ def delete_resumable_upload(bucket_name):
 server = flask.Flask(__name__)
 server.debug = False
 server.register_error_handler(Exception, testbench.error.RestException.handler)
+
+# A client that disappears mid-request without closing its connection (a dropped network,
+# not a reset) would otherwise hold a gunicorn worker thread in recv forever, and once every
+# thread is held the server stops answering anyone.
+SOCKET_READ_TIMEOUT_SECONDS = 60
+
+
+class _SocketReadTimeout:
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        sock = environ.get("gunicorn.socket")
+        if sock is not None:
+            sock.settimeout(SOCKET_READ_TIMEOUT_SECONDS)
+        return self.app(environ, start_response)
+
+
 server.wsgi_app = DispatcherMiddleware(
     root,
     {
@@ -1296,6 +1319,7 @@ server.wsgi_app = DispatcherMiddleware(
         IAM_HANDLER_PATH: iam_app,
     },
 )
+server.wsgi_app = _SocketReadTimeout(server.wsgi_app)
 
 
 def _run():

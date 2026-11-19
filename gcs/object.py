@@ -223,6 +223,7 @@ class Object:
             "bucket": testbench.common.bucket_name_from_proto(bucket.name),
             "name": object_name,
             "metadata": {"x_emulator_upload": "simple"},
+            "contentType": request.headers.get("content-type", None),
             "contentEncoding": request.args.get("contentEncoding", None),
             "kmsKeyName": request.args.get("kmsKeyName", None),
         }

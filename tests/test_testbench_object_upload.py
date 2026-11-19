@@ -45,6 +45,22 @@ class TestTestbenchObjectUpload(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+    def test_upload_simple_records_content_type(self):
+        response = self.client.post(
+            "/upload/storage/v1/b/bucket-name/o",
+            query_string={"name": "zebra", "uploadType": "media"},
+            content_type="application/x-protobuf",
+            data=b"payload",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            json.loads(response.data).get("contentType"), "application/x-protobuf"
+        )
+        response = self.client.get("/storage/v1/b/bucket-name/o/zebra")
+        self.assertEqual(
+            json.loads(response.data).get("contentType"), "application/x-protobuf"
+        )
+
     def test_upload_simple(self):
         payload = "How vexingly quick daft zebras jump!"
         response = self.client.post(

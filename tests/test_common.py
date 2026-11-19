@@ -19,6 +19,7 @@
 import base64
 import gzip
 import hashlib
+import io
 import json
 import types
 import unittest
@@ -1214,6 +1215,31 @@ class TestCommonUtils(unittest.TestCase):
         self.assertIsNone(
             testbench.common._grpc_forced_failure_from_http_instruction("302")
         )
+
+    def test_reject_truncated_body(self):
+        # A body shorter than its Content-Length (a client that went away mid-upload) is rejected.
+        environ = create_environ(
+            base_url="http://localhost:8080",
+            path="/upload/storage/v1/b/bucket-name/o",
+            method="POST",
+            input_stream=io.BytesIO(b"x" * 10),
+        )
+        environ["CONTENT_LENGTH"] = "100"
+        environ["wsgi.input_terminated"] = True
+        request = Request(environ)
+        with self.assertRaises(testbench.error.RestException) as rest:
+            testbench.common.reject_truncated_body(request)
+        self.assertEqual(rest.exception.code, 400)
+
+        request = Request(
+            create_environ(
+                base_url="http://localhost:8080",
+                path="/upload/storage/v1/b/bucket-name/o",
+                method="POST",
+                data=b"x" * 10,
+            )
+        )
+        testbench.common.reject_truncated_body(request)
 
     def test_handle_gzip_request(self):
         # Test gzip decompresses request payload when Content-Encoding: gzip is present.
