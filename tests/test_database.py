@@ -334,6 +334,49 @@ class TestDatabaseObject(unittest.TestCase):
         )
         self.assertEqual(set(), {o.name for o in items})
 
+    def test_delete_live_object_in_versioned_bucket_keeps_noncurrent_version(self):
+        self.bucket.metadata.versioning.enabled = True
+        request = testbench.common.FakeRequest(
+            args={"name": "object-name"}, data=b"12345678", headers={}, environ={}
+        )
+        blob, _ = gcs.object.Object.init_media(request, self.bucket.metadata)
+        self.database.insert_object("bucket-name", blob, context=None)
+        generation = blob.metadata.generation
+
+        self.database.delete_object("bucket-name", "object-name", context=None)
+
+        with self.assertRaises(testbench.error.RestException) as rest:
+            self.database.get_object("bucket-name", "object-name", context=None)
+        self.assertEqual(rest.exception.code, 404)
+        noncurrent = self.database.get_object(
+            "bucket-name", "object-name", context=None, generation=generation
+        )
+        self.assertEqual(noncurrent.media, b"12345678")
+        self.assertTrue(noncurrent.metadata.HasField("delete_time"))
+        items, _ = self.database.list_object(
+            Request(create_environ(query_string={"versions": "true"})),
+            "bucket-name",
+            None,
+        )
+        self.assertEqual(
+            [(o.name, o.generation) for o in items], [("object-name", generation)]
+        )
+        items, _ = self.database.list_object(
+            Request(create_environ(query_string={})), "bucket-name", None
+        )
+        self.assertEqual([], items)
+
+        # Deleting that generation removes it.
+        self.database.delete_object(
+            "bucket-name", "object-name", context=None, generation=generation
+        )
+        items, _ = self.database.list_object(
+            Request(create_environ(query_string={"versions": "true"})),
+            "bucket-name",
+            None,
+        )
+        self.assertEqual([], items)
+
     def test_get_object_not_found(self):
         with self.assertRaises(testbench.error.RestException) as rest:
             _ = self.database.get_object("bucket-name", "object-name", context=None)

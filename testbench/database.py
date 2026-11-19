@@ -502,10 +502,18 @@ class Database:
             )
             # _get_object() raises if the object is not found or the generation mismatches.
             # There are only two cases:
-            if generation == 0 or live_generation == generation:
+            if not generation or live_generation == generation:
                 self.__del_live_generation(bucket_name, object_name, context)
             bucket = self.__get_bucket_for_object(bucket_name, context)
             bucket_with_metadata = self.get_bucket(bucket_name, context)
+            if not generation and bucket_with_metadata.metadata.versioning.enabled:
+                # In a versioned bucket, deleting the live version without naming a
+                # generation makes it non-current: it is kept, listed with versions=true,
+                # and readable or copyable by its generation until that one is deleted.
+                blob.metadata.delete_time.FromDatetime(
+                    datetime.datetime.now(datetime.timezone.utc)
+                )
+                return
             if bucket_with_metadata.metadata.HasField("soft_delete_policy"):
                 self.__soft_delete_object(
                     bucket_name,
